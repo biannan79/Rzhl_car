@@ -1,15 +1,13 @@
 
 #include "RobotArm.h"
-#include "NeZha.h"
+#include "Rzhl.h"
 #include "type_servo.h"
 
 /******************************************************************
-*  	有方机器人：大圣机械臂（Arduino）驱动库V1.0
-*	官方指定购买渠道：有方机器人（淘宝店铺）
-*	官方淘宝地址：https://shop479988600.taobao.com/
+*  	@张蕙斓：大圣机械臂（Arduino）驱动库V1.0
 *
-*	本文件是基于有方机器人NeZha驱动板编写的机械臂驱动库文件。
-*	NeZha驱动板的四个舵机接口对应连接： 
+*	本文件是基于Rzhl驱动板编写的机械臂驱动库文件。
+*	Rzhl驱动板的四个舵机接口对应连接：
 *	Servo2 ------------> 大圣机械臂左舵机
 *	Servo3 ------------> 大圣机械臂前舵机
 *	Servo4 ------------> 大圣机械臂右舵机
@@ -32,10 +30,10 @@ struct SERVO_PARAM robotarm_right = {180, 163, 180, 250};
   * @retval 无
   */
 void RobotArm_Init()
-{ 
-	NeZha_Servo2_Init();		//NeZha驱动板舵机2初始化（NeZha舵机2接机械臂左舵机）  
-	NeZha_Servo3_Init();		//NeZha驱动板舵机2初始化（NeZha舵机2接机械臂前舵机）  
-	NeZha_Servo4_Init();		//NeZha驱动板舵机2初始化（NeZha舵机2接机械臂右舵机）  
+{
+	Rzhl_Servo2_Init();		//Rzhl驱动板舵机2初始化（Rzhl舵机2接机械臂左舵机）
+	Rzhl_Servo3_Init();		//Rzhl驱动板舵机3初始化（Rzhl舵机3接机械臂前舵机）
+	Rzhl_Servo4_Init();		//Rzhl驱动板舵机4初始化（Rzhl舵机4接机械臂右舵机）
 	Robot_Arm_Reset();			//机械臂复位
 }
 
@@ -51,9 +49,9 @@ void Robot_Arm_Reset()
 	robotarm_up.pwm    =  robotarm_up.middle;
 	robotarm_right.pwm =  robotarm_right.middle;
 
-	NeZha_Servo2_SetPwm(robotarm_left.middle);
-	NeZha_Servo3_SetPwm(robotarm_up.middle);
-	NeZha_Servo4_SetPwm(robotarm_right.middle);
+	Rzhl_Servo2_SetPwm(robotarm_left.middle);
+	Rzhl_Servo3_SetPwm(robotarm_up.middle);
+	Rzhl_Servo4_SetPwm(robotarm_right.middle);
 }
 
 /**
@@ -72,7 +70,7 @@ void RobotArm_StretchHand(unsigned char unit_pwm)
 	}
 
 	robotarm_right.pwm = unit_pwm;
-	NeZha_Servo4_SetPwm(unit_pwm);
+	Rzhl_Servo4_SetPwm(unit_pwm);
 }
 
 /**
@@ -90,7 +88,7 @@ void RobotArm_ShrinkHand(unsigned char unit_pwm)
 		unit_pwm = robotarm_right.left_limit;
 	}
 	robotarm_right.pwm = unit_pwm;
-	NeZha_Servo4_SetPwm(unit_pwm);
+	Rzhl_Servo4_SetPwm(unit_pwm);
 }
 
 /**
@@ -108,7 +106,7 @@ void RobotArm_RaiseHand(unsigned char unit_pwm)
 		unit_pwm = robotarm_left.right_limit;
 	}
 	robotarm_left.pwm = unit_pwm;	
-	NeZha_Servo2_SetPwm(unit_pwm);
+	Rzhl_Servo2_SetPwm(unit_pwm);
 }
 
 /**
@@ -126,7 +124,7 @@ void RobotArm_DropHand(unsigned char unit_pwm)
 		unit_pwm = robotarm_left.left_limit;
 	}
 	robotarm_left.pwm = unit_pwm;
-	NeZha_Servo2_SetPwm(unit_pwm);
+	Rzhl_Servo2_SetPwm(unit_pwm);
 		
 }
 
@@ -145,7 +143,7 @@ void RobotArm_ShakeHand(unsigned char unit_pwm)
 		unit_pwm = robotarm_up.right_limit;
 	}
 	robotarm_up.pwm = unit_pwm;	
-	NeZha_Servo3_SetPwm(unit_pwm);
+	Rzhl_Servo3_SetPwm(unit_pwm);
 }
 
 /**
@@ -163,7 +161,7 @@ void RobotArm_LetHand(unsigned char unit_pwm)
 		unit_pwm = robotarm_up.left_limit;
 	}
 	robotarm_up.pwm = unit_pwm;	
-	NeZha_Servo3_SetPwm(unit_pwm);
+	Rzhl_Servo3_SetPwm(unit_pwm);
 }
 
 

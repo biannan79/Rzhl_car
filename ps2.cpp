@@ -137,16 +137,16 @@ unsigned char ps2_key_serch()
 	PS2_ReadData();
 
 	Handkey=(Data[4]<<8)|Data[3];     //这是16个按键  按下为0， 未按下为1
-	for(index=4;index<16;index++)
-	{	    
+	for(index=0;index<16;index++)
+	{
 		if((Handkey&(1<<(MASK[index][0]-1)))==0)
 		{
-			MASK[index][1] = 1; 
+			MASK[index][1] = 1;
 			key_num++;
 		}
 		else
 		{
-			MASK[index][1] = 0; 
+			MASK[index][1] = 0;
 		}
 	}
 	return key_num;
