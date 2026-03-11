@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Arduino-based remote control system for a NeZha smart car with mecanum wheels and robot arm. Uses PS2 wireless controller for input and communicates with NeZha motor driver board via I2C.
+Arduino-based remote control system for a NeZha smart car with mecanum wheels and robot arm. Supports three control modes:
+1. PS2 wireless controller (default)
+2. Line tracking with IR sensors
+3. WiFi control via ESP8266-01S module (web browser/keyboard)
 
 ## Build and Upload
 
@@ -35,6 +38,13 @@ Arduino CLI: arduino-cli compile --fqbn <board> . && arduino-cli upload -p <port
 
 **Status LED**
 - Pin 13, toggles every 1 second
+
+**ESP8266-01S WiFi Module (Optional)**
+- Pins: RX=2, TX=3 (SoftwareSerial)
+- Voltage: 3.3V (use voltage divider on RX pin)
+- Baud rate: 115200
+- Creates TCP server on port 80
+- Serves HTML control page with keyboard support
 
 ## Control Loop Timing
 
@@ -68,15 +78,44 @@ Where:
 
 ## Key Files
 
-- **project.ino**: Main control logic, 212 lines
-- **NeZha.cpp/h**: Driver board API (motors, servos, encoders, LEDs)
-- **NeZha_I2C.cpp/h**: Software I2C implementation
+- **Rzhl_car.ino**: Main control logic with mode switching
+- **Rzhl.cpp/h**: Driver board API (motors, servos, encoders, LEDs)
+- **Rzhl_I2C.cpp/h**: Software I2C implementation
 - **ps2.cpp/h**: PS2 controller SPI-like protocol
 - **RobotArm.cpp/h**: Robot arm servo abstraction with limit checking
 - **Board_Timer.cpp/h**: TimerOne wrapper for 20ms interrupt
 - **LED.cpp/h**: Status LED on pin 13
+- **ESP8266_WiFi.cpp/h**: WiFi module communication and web server
+- **Vehicle_Chassis.cpp/h**: Mecanum wheel movement functions
+- **Sensor.cpp/h**: IR sensor interface for line tracking
 
 ## Control Modes
+
+The system supports three operating modes:
+
+**1. Remote Control Mode (MODE_REMOTE = 0)**
+- Default mode on startup
+- Controlled by PS2 wireless controller
+- Status LED blinks every 1 second
+- Supports both analog (red light) and digital (green light) modes
+
+**2. Line Tracking Mode (MODE_LINE_TRACK = 1)**
+- Autonomous line following using IR sensors
+- Status LED stays on constantly
+- Uses 4 IR sensors to detect line position
+- Switch via SELECT button or serial command '1'
+
+**3. WiFi Control Mode (MODE_WIFI = 2)**
+- Remote control via web browser
+- Keyboard control: W/A/S/D or arrow keys
+- Status LED blinks rapidly
+- Switch via START button or serial command 'w'
+- Requires ESP8266-01S module
+
+**Mode Switching:**
+- **START button**: Toggle between Remote/Line Track ↔ WiFi mode
+- **SELECT button**: Toggle between Remote ↔ Line Track mode (not available in WiFi mode)
+- **Serial commands**: '0'=Remote, '1'=Line Track, 'w'=WiFi
 
 **Red Light Mode (Analog - 0x73)**
 - Normal: Left stick = movement, right stick X = rotation
@@ -85,6 +124,13 @@ Where:
 **Green Light Mode (Digital - 0x41)**
 - Normal: D-pad = movement, L2/R2 = rotation
 - L1 held: D-pad up/down = raise/drop, triangle/cross = stretch/shrink, square/circle = shake/let
+
+**WiFi Control Commands:**
+- W or ↑: Forward (speed 600)
+- S or ↓: Backward (speed 600)
+- A or ←: Left turn (speed 600)
+- D or →: Right turn (speed 600)
+- X or Space: Stop
 
 ## Tail LED States
 
@@ -97,19 +143,55 @@ Controlled by Led_State variable (project.ino:19):
 ## Porting to Different Arduino
 
 Modify pin assignments in:
-1. **NeZha_I2C.cpp:33-34**: Change SCL/SDA pins (currently 6/7)
+1. **Rzhl_I2C.cpp:33-34**: Change SCL/SDA pins (currently 6/7)
 2. **ps2.cpp:5-8**: Change PS2 pins (currently DI=11, DO=9, CS=8, SCK=10)
 3. **LED.cpp:3**: Change status LED pin (currently 13)
+4. **ESP8266_WiFi.cpp:8-9**: Change ESP8266 pins (currently RX=2, TX=3)
 
 Update corresponding pinMode() calls in Init functions.
 
+## WiFi Module Setup
+
+**Hardware Connection:**
+- ESP8266 VCC → 3.3V (NOT 5V!)
+- ESP8266 GND → GND
+- ESP8266 TX → Arduino Pin 3
+- ESP8266 RX → Arduino Pin 2 (use 1K-2K resistor divider to 3.3V)
+- ESP8266 CH_PD → 3.3V
+
+**Software Configuration:**
+Edit `ESP8266_WiFi.cpp` lines 13-14:
+```cpp
+const char* WIFI_SSID = "YourWiFiSSID";
+const char* WIFI_PASSWORD = "YourPassword";
+```
+
+**Usage:**
+1. Press START button or send 'w' via serial
+2. Wait for WiFi initialization (check serial monitor for IP)
+3. Open browser to ESP8266 IP address (e.g., http://192.168.1.100)
+4. Control via web page buttons or keyboard
+
+See `ESP8266使用说明.md` for detailed instructions.
+
 ## Important Constants
 
-- `UNIT_PWM`: Servo increment per cycle (project.ino:9, default: 2)
-- `PS2_LSPEED`: Max motor speed for left stick (project.ino:10, value: 1000)
-- `PS2_RSPEED`: Max motor speed for right stick (project.ino:11, value: 1000)
-- `RECIPROCAL`: 0.0078f (1/128 for joystick mapping, project.ino:12)
+- `UNIT_PWM`: Servo increment per cycle (Rzhl_car.ino:10, default: 2)
+- `PS2_LSPEED`: Max motor speed for left stick (Rzhl_car.ino:11, value: 1000)
+- `PS2_RSPEED`: Max motor speed for right stick (Rzhl_car.ino:12, value: 1000)
+- `RECIPROCAL`: 0.0078f (1/128 for joystick mapping, Rzhl_car.ino:13)
 - `HIGH_TIM`: PS2 SPI timing delay (ps2.cpp:10, value: 50)
+- `wifi_speed`: WiFi control speed (Rzhl_car.ino ProcessWiFiControl(), value: 600)
+
+## Serial Debug Commands
+
+Open serial monitor at 9600 baud:
+- `0` - Switch to Remote mode
+- `1` - Switch to Line Track mode
+- `w` - Switch to WiFi mode (initializes ESP8266)
+- `m` - Show current mode
+- `s` - Show sensor status
+- `d` - Toggle debug mode (shows all PS2 button presses)
 
 ## I2C Communication Protocol
 

@@ -6,6 +6,7 @@
 #include "LED.h"
 #include "Sensor.h"
 #include "Vehicle_Chassis.h"
+#include "ESP8266_WiFi.h"
 
 #define   UNIT_PWM	2				//舵机单位转动值
 #define   PS2_LSPEED    1000		//左遥杆拨到底对应电机最大目标值（电机最大速度为1000）
@@ -15,6 +16,7 @@
 // 模式定义
 #define MODE_REMOTE     0  // 遥控模式
 #define MODE_LINE_TRACK 1  // 巡线模式
+#define MODE_WIFI       2  // WiFi控制模式
 
 uint8_t KeyNum;
 uint8_t PS2_Mode, Last_PS2_Mode;
@@ -53,13 +55,79 @@ void FlashAllLights(uint8_t times) {
 void UpdateModeIndicator() {
   if (Current_Mode == MODE_LINE_TRACK) {
     Led_On();  // 巡线模式：LED常亮
+  } else if (Current_Mode == MODE_WIFI) {
+    // WiFi模式：LED快速闪烁（在主循环中处理）
   } else {
     // 遥控模式：LED按原来的1秒闪烁
   }
 }
 
+// WiFi控制处理函数
+void ProcessWiFiControl() {
+  uint8_t cmd = ESP8266_GetCommand();
+
+  if (cmd != 0) {
+    const int wifi_speed = 600;  // WiFi控制速度
+
+    switch(cmd) {
+      case CMD_FORWARD:  // 'w' - 前进
+        M1_Target = wifi_speed;
+        M2_Target = -wifi_speed;
+        M3_Target = -wifi_speed;
+        M4_Target = wifi_speed;
+        Led_State = 0;
+        Serial.println("WiFi: Forward");
+        break;
+
+      case CMD_BACKWARD:  // 's' - 后退
+        M1_Target = -wifi_speed;
+        M2_Target = wifi_speed;
+        M3_Target = wifi_speed;
+        M4_Target = -wifi_speed;
+        Led_State = 1;
+        Serial.println("WiFi: Backward");
+        break;
+
+      case CMD_LEFT:  // 'a' - 左转
+        M1_Target = -wifi_speed;
+        M2_Target = -wifi_speed;
+        M3_Target = -wifi_speed;
+        M4_Target = -wifi_speed;
+        Led_State = 2;
+        Serial.println("WiFi: Left");
+        break;
+
+      case CMD_RIGHT:  // 'd' - 右转
+        M1_Target = wifi_speed;
+        M2_Target = wifi_speed;
+        M3_Target = wifi_speed;
+        M4_Target = wifi_speed;
+        Led_State = 3;
+        Serial.println("WiFi: Right");
+        break;
+
+      case CMD_STOP:  // 'x' - 停止
+        M1_Target = 0;
+        M2_Target = 0;
+        M3_Target = 0;
+        M4_Target = 0;
+        Led_State = 0;
+        Serial.println("WiFi: Stop");
+        break;
+
+      default:
+        break;
+    }
+  }
+}
+
 void setup() {
-  Serial.begin(9600);  // 启动串口调试
+  // 注意：使用硬件串口连接ESP8266时，无法同时使用串口调试
+  // 如果需要调试，请在setup()开始时延迟5秒，用于查看串口输出
+  // Serial.begin(9600);
+  // Serial.println("System Initialized!");
+  // delay(5000);  // 延迟5秒后再初始化ESP8266
+
   PS2_Init();
   Rzhl_Init();
   Rzhl_Motor_Init();
@@ -68,73 +136,21 @@ void setup() {
   Vehicle_Chassis_Init();  // 初始化底盘
   Board_Timer_Init();
   Led_Init();
-  Serial.println("System Initialized!");
-  Serial.println("Commands:");
-  Serial.println("  1 - Enter Line Track Mode");
-  Serial.println("  0 - Enter Remote Mode");
-  Serial.println("  s - Show Sensor Status");
-  Serial.println("  m - Show Current Mode");
-  Serial.println("  d - Toggle Debug Mode (show all key presses)");
+
+  // 启动时闪灯3次表示系统就绪
+  FlashAllLights(3);
 }
 
 void loop() {
-  // 处理串口命令
-  if (Serial.available() > 0) {
-    char cmd = Serial.read();
+  // 注意：使用硬件串口连接ESP8266时，串口命令功能不可用
+  // 所有模式切换通过PS2手柄完成：
+  // - START键：切换WiFi模式
+  // - SELECT键：切换巡线模式
 
-    if (cmd == '1') {
-      // 进入巡线模式
-      Current_Mode = MODE_LINE_TRACK;
-      FlashAllLights(1);
-      Serial.println(">>> Switched to LINE TRACK Mode");
-    }
-    else if (cmd == '0') {
-      // 进入遥控模式
-      Current_Mode = MODE_REMOTE;
-      // 立即停止电机
-      Rzhl_Motor1_SetPwm(0, 0);
-      Rzhl_Motor2_SetPwm(0, 0);
-      Rzhl_Motor3_SetPwm(0, 0);
-      Rzhl_Motor4_SetPwm(0, 0);
-      M1_Target = 0;
-      M2_Target = 0;
-      M3_Target = 0;
-      M4_Target = 0;
-      FlashAllLights(2);
-      Serial.println(">>> Switched to REMOTE Mode");
-    }
-    else if (cmd == 's') {
-      // 显示传感器状态
-      SensorState[0] = Sensor0_Get_State();
-      SensorState[1] = Sensor1_Get_State();
-      SensorState[2] = Sensor2_Get_State();
-      SensorState[3] = Sensor3_Get_State();
-      Serial.print("Sensors: ");
-      Serial.print(SensorState[0]);
-      Serial.print("-");
-      Serial.print(SensorState[1]);
-      Serial.print("-");
-      Serial.print(SensorState[2]);
-      Serial.print("-");
-      Serial.println(SensorState[3]);
-    }
-    else if (cmd == 'm') {
-      // 显示当前模式
-      if (Current_Mode == MODE_REMOTE) {
-        Serial.println("Current Mode: REMOTE");
-      } else {
-        Serial.println("Current Mode: LINE TRACK");
-      }
-    }
-    else if (cmd == 'd') {
-      // 切换调试模式
-      Debug_Mode = !Debug_Mode;
-      if (Debug_Mode) {
-        Serial.println(">>> Debug Mode ON - Will show all key presses");
-      } else {
-        Serial.println(">>> Debug Mode OFF");
-      }
-    }
+  // WiFi模式下处理ESP8266通信
+  if (Current_Mode == MODE_WIFI) {
+    ESP8266_Process();
+    ProcessWiFiControl();
   }
 
   if (Board_Timer_Flag_Get())    //定时器定时20ms周期
@@ -146,56 +162,32 @@ void loop() {
       KeyNum = ps2_key_serch();
       PS2_Mode = ps2_mode_get();
 
-      // 调试模式：显示所有按键
-      if (Debug_Mode) {
-        // 检测所有按键（PSB_SELECT=1 到 PSB_BLUE=16）
-        for (uint8_t btn = 1; btn <= 16; btn++) {
-          if (ps2_get_key_state(btn)) {
-            Serial.print(">>> Button pressed: ");
-            Serial.print(btn);
-            Serial.print(" (");
-            // 显示按键名称
-            switch(btn) {
-              case 1: Serial.print("SELECT"); break;
-              case 2: Serial.print("L3"); break;
-              case 3: Serial.print("R3"); break;
-              case 4: Serial.print("START"); break;
-              case 5: Serial.print("PAD_UP"); break;
-              case 6: Serial.print("PAD_RIGHT"); break;
-              case 7: Serial.print("PAD_DOWN"); break;
-              case 8: Serial.print("PAD_LEFT"); break;
-              case 9: Serial.print("L2"); break;
-              case 10: Serial.print("R2"); break;
-              case 11: Serial.print("L1"); break;
-              case 12: Serial.print("R1"); break;
-              case 13: Serial.print("GREEN"); break;
-              case 14: Serial.print("RED"); break;
-              case 15: Serial.print("BLUE"); break;
-              case 16: Serial.print("PINK"); break;
-              default: Serial.print("UNKNOWN"); break;
-            }
-            Serial.println(")");
-          }
-        }
-      }
+      // 调试模式已禁用（串口被ESP8266占用）
+      // if (Debug_Mode) { ... }
 
-      // 检测START键或SELECT键切换模式（两个键都可以）
+      // 检测START键切换WiFi模式
       uint8_t start_state = ps2_get_key_state(PSB_START);
       uint8_t select_state = ps2_get_key_state(PSB_SELECT);
 
-      // START键切换
+      // START键切换WiFi模式
       if (start_state && !Last_Start_State)
       {
-        // 切换模式
-        if (Current_Mode == MODE_REMOTE)
+        // 切换到WiFi模式或返回遥控模式
+        if (Current_Mode == MODE_REMOTE || Current_Mode == MODE_LINE_TRACK)
         {
-          Current_Mode = MODE_LINE_TRACK;  // 切换到巡线模式
-          FlashAllLights(1);  // 闪烁1次表示进入巡线模式
+          Current_Mode = MODE_WIFI;  // 切换到WiFi模式
+          // 停止电机
+          M1_Target = 0;
+          M2_Target = 0;
+          M3_Target = 0;
+          M4_Target = 0;
+          FlashAllLights(3);  // 闪烁3次表示进入WiFi模式
+          ESP8266_Init();
         }
-        else
+        else if (Current_Mode == MODE_WIFI)
         {
-          Current_Mode = MODE_REMOTE;      // 切换到遥控模式
-          // 立即停止电机
+          Current_Mode = MODE_REMOTE;  // 返回遥控模式
+          // 停止电机
           Rzhl_Motor1_SetPwm(0, 0);
           Rzhl_Motor2_SetPwm(0, 0);
           Rzhl_Motor3_SetPwm(0, 0);
@@ -204,13 +196,12 @@ void loop() {
           M2_Target = 0;
           M3_Target = 0;
           M4_Target = 0;
-          FlashAllLights(2);  // 闪烁2次表示退出巡线模式
+          FlashAllLights(2);  // 闪烁2次表示返回遥控模式
         }
       }
-      Last_Start_State = start_state;
 
-      // SELECT键也可以切换（备用）
-      if (select_state && !Last_Select_State)
+      // SELECT键在遥控模式和巡线模式之间切换
+      if (select_state && !Last_Select_State && Current_Mode != MODE_WIFI)
       {
         // 切换模式
         if (Current_Mode == MODE_REMOTE)
@@ -230,9 +221,11 @@ void loop() {
           M2_Target = 0;
           M3_Target = 0;
           M4_Target = 0;
-          FlashAllLights(2);  // 闪烁2次表示退出巡线模式
+          FlashAllLights(2);  // 闪烁2次表示返回遥控模式
         }
       }
+
+      Last_Start_State = start_state;
       Last_Select_State = select_state;
 
       // 根据当前模式执行不同的控制逻辑
@@ -247,17 +240,8 @@ void loop() {
         SensorState[2] = Sensor2_Get_State();
         SensorState[3] = Sensor3_Get_State();
 
-        // 调试输出传感器状态
-        if ((Time + 1) % 25 == 0) {  // 每500ms输出一次
-          Serial.print("Sensors: ");
-          Serial.print(SensorState[0]);
-          Serial.print("-");
-          Serial.print(SensorState[1]);
-          Serial.print("-");
-          Serial.print(SensorState[2]);
-          Serial.print("-");
-          Serial.println(SensorState[3]);
-        }
+        // 调试输出传感器状态已禁用（串口被ESP8266占用）
+        // if ((Time + 1) % 25 == 0) { ... }
 
         // 标记是否找到有效路径
         bool path_found = false;
