@@ -1,0 +1,84 @@
+//内容  表示输入到arduino ide 的串口监视器里的内容
+需要设置“both NL & CR”模式， 带宽设置“115200 baud”
+
+
+#### 给arduino烧录set_arduino2port.ino ###
+
+0.测试连接：
+//AT
+OK
+
+1.设置 WiFi 模式为 Station 模式：
+//AT+CWMODE=1
+OK
+
+2.连接wifi
+//AT+CWJAP="你的WiFi名称","你的WiFi密码"
+//AT+CWJAP="CET-AL00%6307%CloudClone","80275924"
+这个命令需要等待 10-15 秒，成功后返回：
+  WIFI CONNECTED
+  WIFI GOT IP
+  OK
+
+3.获取ip地址：
+//AT+CIFSR
++CIFSR:APIP,"192.168.4.1"
++CIFSR:APMAC,"2e:3a:e8:03:e8:9a"
+
+4. 测试连接状态：
+//AT+CWJAP?
++CWJAP:"CET-AL00%6307%CloudClone","d2:6a:ec:ea:e6:ec",6,-40
+OK
+此时就已经成功连接了
+
+5.启用多连接模式：
+//AT+CIPMUX=1
+OK
+
+6.启动 TCP 服务器（端口 80）：
+//AT+CIPSERVER=1,80
+OK
+
+7.获取新模式的ip地址
+//AT+CIFSR
++CIFSR:STAIP,"192.168.43.40"
++CIFSR:STAMAC,"2c:3a:e8:03:e8:9a"
+
+8.连接小车和电脑
+保障电脑和小车连接同一wifi
+在浏览器输入#7中 ESP8266 的 IP 地址"192.168.43.40"
+如串口监视器里有如下信息
+16:27:30.886 -> +IPD,0,436:GET / HTTP/1.1
+16:27:30.886 -> Host: 192.168.43.40
+16:27:30.886 -> Connection: keep-alive
+16:27:30.886 -> Upgrade-Insecure-Requests: 1
+16:27:30.886 -> User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.66 Safari/537.36
+16:27:30.929 -> Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+16:27:30.929 -> Accept-Encoding: gzip, deflate
+16:27:30.929 -> Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+则说明：ESP8266 已经接收到浏览器的连接请求了。问题是 ESP8266 没有发送 HTTP 响应，所以浏览器一直在等待
+
+
+
+#### 给 Generic ESP8266 Module 烧录esp8266_webserver.ino ###
+保证esp和电脑都连接同一wifi
+  1. 给 ESP8266 烧录新程序：直接用烧录器烧录而不是用arduino烧录
+    - 打开 Rzhl_connect/esp8266_webserver/esp8266_webserver.ino
+    - 选择板子：Generic ESP8266 Module
+    - 上传程序
+  2. 查看连接信息：
+    - 打开串口监视器，波特率 115200
+    - 会显示 WiFi 连接状态和 IP 地址
+    - 例如：IP Address: 192.168.43.40
+  3. 在浏览器访问：
+    - 输入 ESP8266 的 IP 地址（例如 http://192.168.43.40）
+    - 会看到一个控制页面，有方向按钮
+    - 点击按钮或使用键盘（W/A/S/D/X）控制
+  4. 与 Arduino 通信：
+    - ESP8266 会通过串口发送命令给 Arduino
+    - 命令格式：w（前进）、s（后退）、a（左转）、d（右转）、x（停止）
+
+
+
+
+

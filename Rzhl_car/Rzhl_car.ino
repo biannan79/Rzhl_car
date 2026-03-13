@@ -28,11 +28,15 @@ uint8_t Led_State;  //车尾灯灯状态标志位； 0：熄灭， 1：后退，
 uint8_t SensorState[4];
 uint8_t Area, Last_Area;
 
+// WiFi控制超时变量
+uint8_t WiFi_Timeout_Counter = 0;   // WiFi命令超时计数器（20ms为单位）
+#define WIFI_TIMEOUT_TICKS 10       // 10个tick = 200ms无命令则停止
+
 // 模式控制变量
-uint8_t Current_Mode = MODE_REMOTE;  // 当前模式，默认遥控模式
-uint8_t Last_Start_State = 0;        // 上次START键状态，用于检测按键按下
-uint8_t Last_Select_State = 0;       // 上次SELECT键状态
-uint8_t Debug_Mode = 0;              // 调试模式：0=正常，1=显示所有按键
+uint8_t Current_Mode = MODE_REMOTE;      // 默认启动进入遥控模式
+uint8_t Last_Start_State = 0;            // 上次START键状态，用于检测按键按下
+uint8_t Last_Select_State = 0;           // 上次SELECT键状态
+uint8_t Debug_Mode = 0;                  // 调试模式：0=正常，1=显示所有按键
 
 // 灯光闪烁函数
 void FlashAllLights(uint8_t times) {
@@ -68,42 +72,39 @@ void ProcessWiFiControl() {
 
   if (cmd != 0) {
     const int wifi_speed = 600;  // WiFi控制速度
+    WiFi_Timeout_Counter = 0;    // 收到命令，重置超时计数器
 
     switch(cmd) {
       case CMD_FORWARD:  // 'w' - 前进
-        M1_Target = wifi_speed;
-        M2_Target = -wifi_speed;
-        M3_Target = -wifi_speed;
-        M4_Target = wifi_speed;
+        M1_Target = -wifi_speed;
+        M2_Target = wifi_speed;
+        M3_Target = wifi_speed;
+        M4_Target = -wifi_speed;
         Led_State = 0;
-        Serial.println("WiFi: Forward");
         break;
 
       case CMD_BACKWARD:  // 's' - 后退
-        M1_Target = -wifi_speed;
-        M2_Target = wifi_speed;
-        M3_Target = wifi_speed;
-        M4_Target = -wifi_speed;
+        M1_Target = wifi_speed;
+        M2_Target = -wifi_speed;
+        M3_Target = -wifi_speed;
+        M4_Target = wifi_speed;
         Led_State = 1;
-        Serial.println("WiFi: Backward");
         break;
 
       case CMD_LEFT:  // 'a' - 左转
-        M1_Target = -wifi_speed;
-        M2_Target = -wifi_speed;
-        M3_Target = -wifi_speed;
-        M4_Target = -wifi_speed;
-        Led_State = 2;
-        Serial.println("WiFi: Left");
-        break;
-
-      case CMD_RIGHT:  // 'd' - 右转
         M1_Target = wifi_speed;
         M2_Target = wifi_speed;
         M3_Target = wifi_speed;
         M4_Target = wifi_speed;
+        Led_State = 2;
+        break;
+
+      case CMD_RIGHT:  // 'd' - 右转
+        M1_Target = -wifi_speed;
+        M2_Target = -wifi_speed;
+        M3_Target = -wifi_speed;
+        M4_Target = -wifi_speed;
         Led_State = 3;
-        Serial.println("WiFi: Right");
         break;
 
       case CMD_STOP:  // 'x' - 停止
@@ -112,7 +113,22 @@ void ProcessWiFiControl() {
         M3_Target = 0;
         M4_Target = 0;
         Led_State = 0;
-        Serial.println("WiFi: Stop");
+        WiFi_Timeout_Counter = 0;
+        break;
+
+      case CMD_EXIT_WIFI:  // 'q' - 退出WiFi模式
+        Current_Mode = MODE_REMOTE;
+        M1_Target = 0;
+        M2_Target = 0;
+        M3_Target = 0;
+        M4_Target = 0;
+        Rzhl_Motor1_SetPwm(0, 0);
+        Rzhl_Motor2_SetPwm(0, 0);
+        Rzhl_Motor3_SetPwm(0, 0);
+        Rzhl_Motor4_SetPwm(0, 0);
+        Led_State = 0;
+        WiFi_Timeout_Counter = 0;
+        FlashAllLights(2);  // 闪烁2次表示退出WiFi模式
         break;
 
       default:
@@ -137,8 +153,11 @@ void setup() {
   Board_Timer_Init();
   Led_Init();
 
-  // 启动时闪灯3次表示系统就绪
-  FlashAllLights(3);
+  // 提前初始化ESP8266串口（即使不使用WiFi模式也初始化）
+  ESP8266_Init();
+
+  // 启动时闪灯2次表示系统就绪，进入遥控模式
+  FlashAllLights(2);
 }
 
 void loop() {
@@ -162,8 +181,19 @@ void loop() {
       KeyNum = ps2_key_serch();
       PS2_Mode = ps2_mode_get();
 
-      // 调试模式已禁用（串口被ESP8266占用）
-      // if (Debug_Mode) { ... }
+      // WiFi模式下的超时检查（每20ms检查一次）
+      if (Current_Mode == MODE_WIFI) {
+        WiFi_Timeout_Counter++;
+        if (WiFi_Timeout_Counter > WIFI_TIMEOUT_TICKS) {
+          // 超时，停止电机
+          M1_Target = 0;
+          M2_Target = 0;
+          M3_Target = 0;
+          M4_Target = 0;
+          Led_State = 0;
+          WiFi_Timeout_Counter = WIFI_TIMEOUT_TICKS;  // 防止溢出
+        }
+      }
 
       // 检测START键切换WiFi模式
       uint8_t start_state = ps2_get_key_state(PSB_START);
@@ -181,8 +211,12 @@ void loop() {
           M2_Target = 0;
           M3_Target = 0;
           M4_Target = 0;
+          // 清空串口缓冲区，避免执行之前的命令
+          while (Serial.available()) {
+            Serial.read();
+          }
           FlashAllLights(3);  // 闪烁3次表示进入WiFi模式
-          ESP8266_Init();
+          // ESP8266串口已在setup中初始化，这里不需要再初始化
         }
         else if (Current_Mode == MODE_WIFI)
         {
@@ -313,7 +347,7 @@ void loop() {
           Last_Area = Area;
         }
       }
-      else
+      else if (Current_Mode == MODE_REMOTE)
       {
         // ========== 遥控模式 ==========
         if (PS2_Mode == PSB_REDLIGHT_MODE)
@@ -492,8 +526,10 @@ void loop() {
     }
     if ((Time + 1) % 50 == 0)		//指示灯   1s闪烁
     {
-      if (Current_Mode == MODE_REMOTE) {
-        Led_Turn();  // 遥控模式：LED闪烁
+      if (Current_Mode == MODE_WIFI) {
+        Led_Turn();  // WiFi模式：LED闪烁
+      } else if (Current_Mode == MODE_REMOTE) {
+        Led_Off();   // 遥控模式：LED熄灭
       }
       // 巡线模式：LED保持常亮，不闪烁
       Time = 0;

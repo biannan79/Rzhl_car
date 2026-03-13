@@ -13,6 +13,7 @@
 #define CMD_LEFT        'a'
 #define CMD_RIGHT       'd'
 #define CMD_STOP        'x'
+#define CMD_EXIT_WIFI   'q'  // 退出WiFi模式
 
 void ESP8266_Init(void);
 void ESP8266_Process(void);
